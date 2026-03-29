@@ -105,7 +105,7 @@ internal class CustomDataDeserializer : IEarlyDeserializer, IObjectsDeserializer
                 switch (customEventData.eventType)
                 {
                     case INSTANTIATE_PREFAB:
-                        _trackBuilder.AddFromCustomData(customEventData.customData, false, false);
+                        _trackBuilder.AddManyFromCustomData(customEventData.customData, false, false);
                         break;
 
                     default:

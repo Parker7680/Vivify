@@ -32,6 +32,7 @@ internal class CustomDataDeserializer : IEarlyDeserializer, IObjectsDeserializer
     public Dictionary<CustomEventData, ICustomEventCustomData> DeserializeCustomEvents()
     {
         Dictionary<CustomEventData, ICustomEventCustomData> dictionary = new();
+        List<string> loadedPrefabs = [];
         foreach (CustomEventData customEventData in _beatmapData.customEventDatas)
         {
             try
@@ -56,11 +57,30 @@ internal class CustomDataDeserializer : IEarlyDeserializer, IObjectsDeserializer
                         break;
 
                     case DESTROY_PREFAB:
-                        dictionary.Add(customEventData, new DestroyObjectData(data));
+                        DestroyObjectData destroyData = new(data);
+                        foreach (string id in destroyData.Id)
+                        {
+                            loadedPrefabs.Remove(id);
+                        }
+
+                        dictionary.Add(customEventData, destroyData);
+
                         break;
 
                     case INSTANTIATE_PREFAB:
-                        dictionary.Add(customEventData, new InstantiatePrefabData(data, _tracks));
+                        InstantiatePrefabData prefabData = new(data, _tracks);
+                        if (prefabData.Id != null)
+                        {
+                            if (loadedPrefabs.Contains(prefabData.Id))
+                            {
+                                throw new InvalidOperationException($"Prefab with id [{prefabData.Id}] already loaded");
+                            }
+
+                            loadedPrefabs.Add(prefabData.Id);
+                        }
+
+                        dictionary.Add(customEventData, prefabData);
+
                         break;
 
                     case SET_MATERIAL_PROPERTY:

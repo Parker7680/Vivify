@@ -11,7 +11,7 @@ internal class SetSaberManyColor : SetSaberGlowColor
     // maybe add other properties? they don't seem important
     private static readonly int _color = Shader.PropertyToID("_Color");
 
-    private Renderer?[] _renderers = null!;
+    private Renderer?[] _renderers = [];
 
     private static bool SetAllRendererColors(SetSaberGlowColor setSaberGlowColor, Color color)
     {

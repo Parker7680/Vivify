@@ -39,11 +39,14 @@ internal class SaberTrailHijacker : IHijacker<FollowedSaberTrail>
             Color color = colorManager.ColorForSaberType(saber.saberType);
             saberTrail.Setup(color, saber._movementData);
             saberTrail.enabled = true;
-            saberTrail._trailRenderer._meshRenderer.enabled = false;
+            saberTrail._trailRenderer?._meshRenderer.enabled = false;
         }
         else
         {
-            _originalRenderers.Add(saberTrail._trailRenderer._meshRenderer);
+            if (saberTrail._trailRenderer != null)
+            {
+                _originalRenderers.Add(saberTrail._trailRenderer._meshRenderer);
+            }
         }
 
         CheckSaberFactory();
@@ -99,7 +102,8 @@ internal class SaberTrailHijacker : IHijacker<FollowedSaberTrail>
             }
             else
             {
-                _originalRenderers.UnionWith(saberTrails.Select(n => n._trailRenderer._meshRenderer));
+                _originalRenderers.UnionWith(
+                    saberTrails.Where(n => n._trailRenderer != null).Select(n => n._trailRenderer._meshRenderer));
             }
         }
     }

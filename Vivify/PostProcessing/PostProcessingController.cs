@@ -6,6 +6,7 @@ using IPA.Utilities;
 using JetBrains.Annotations;
 using SiraUtil.Logging;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Zenject;
 using static Vivify.VivifyController;
 
@@ -155,7 +156,7 @@ internal class PostProcessingController : CullingCameraController
         RenderTextureDescriptor descriptor = src.descriptor;
         descriptor.msaaSamples = 1;
         RenderTexture temp = RenderTexture.GetTemporary(descriptor);
-        RenderImage(src, temp, PreEffects);
+        Graphics.ExecuteCommandBuffer(RenderImage(descriptor, src, temp, PreEffects));
 
         ImageEffectController.RenderImageCallback? callback = _imageEffectController._renderImageCallback;
         if (callback != null && _imageEffectController.isActiveAndEnabled)
@@ -166,7 +167,7 @@ internal class PostProcessingController : CullingCameraController
             temp = temp2;
         }
 
-        RenderImage(temp, dst, PostEffects);
+        Graphics.ExecuteCommandBuffer(RenderImage(descriptor, temp, dst, PostEffects));
         RenderTexture.ReleaseTemporary(temp);
     }
 
@@ -254,20 +255,25 @@ internal class PostProcessingController : CullingCameraController
         }
     }
 
-    private void RenderImage(RenderTexture src, RenderTexture dst, List<MaterialData> materials)
+    private CommandBuffer RenderImage(RenderTextureDescriptor mainDescriptor, RenderTargetIdentifier src, RenderTargetIdentifier dst, List<MaterialData> materials)
     {
-        RenderTextureDescriptor descriptor = src.descriptor;
         Camera.MonoOrStereoscopicEye stereoActiveEye = Camera.stereoActiveEye;
+        CommandBuffer command = new();
 
         if (materials.Count == 0)
         {
-            Graphics.Blit(src, dst);
-            return;
+            command.Blit(src, dst);
+            return command;
         }
 
+        int tempIDNext = 69;
+
         // blit all passes
-        RenderTexture main = RenderTexture.GetTemporary(descriptor);
-        Graphics.Blit(src, main);
+        int mainID = Shader.PropertyToID("_MainTex"); // TODO: I am not actually sure what this should be
+        RenderTargetIdentifier main = new(mainID);
+        command.GetTemporaryRT(mainID, mainDescriptor);
+
+        command.Blit(src, main);
         for (int i = materials.Count - 1; i >= 0; i--)
         {
             MaterialData materialData = materials[i];
@@ -290,10 +296,13 @@ internal class PostProcessingController : CullingCameraController
                             continue;
                         }
 
-                        RenderTexture temp = RenderTexture.GetTemporary(descriptor);
-                        Graphics.Blit(main, temp, material, materialData.Pass);
-                        RenderTexture.ReleaseTemporary(main);
+                        int tempID = ++tempIDNext;
+                        RenderTargetIdentifier temp = new(tempID);
+                        command.GetTemporaryRT(tempID, mainDescriptor);
+                        command.Blit(main, temp, material, materialData.Pass);
+                        command.ReleaseTemporaryRT(mainID);
                         main = temp;
+                        mainID = tempID;
                     }
                     else
                     {
@@ -329,11 +338,12 @@ internal class PostProcessingController : CullingCameraController
                                 continue;
                             }
 
-                            RenderTexture temp = RenderTexture.GetTemporary(source!.descriptor);
-                            temp.filterMode = source.filterMode;
-                            Graphics.Blit(source, temp, material, materialData.Pass);
-                            Graphics.Blit(temp, source);
-                            RenderTexture.ReleaseTemporary(temp);
+                            int tempID = ++tempIDNext;
+                            RenderTargetIdentifier temp = new(tempID);
+                            command.GetTemporaryRT(tempID, source!.descriptor, source.filterMode);
+                            command.Blit(source, temp, material, materialData.Pass);
+                            command.Blit(temp, source);
+                            command.ReleaseTemporaryRT(tempID);
 
                             continue;
                         }
@@ -379,26 +389,27 @@ internal class PostProcessingController : CullingCameraController
 
             continue;
 
-            static void Blit(RenderTexture? blitSrc, RenderTexture? blitDst, Material? blitMat, int blitPass)
+            void Blit(RenderTargetIdentifier? blitSrc, RenderTargetIdentifier? blitDst, Material? blitMat, int blitPass)
             {
-                if (blitDst == null || blitSrc == null)
+                if (!blitDst.HasValue || !blitSrc.HasValue)
                 {
                     return;
                 }
 
                 if (blitMat != null)
                 {
-                    Graphics.Blit(blitSrc, blitDst, blitMat, blitPass);
+                    command.Blit(blitSrc.Value, blitDst.Value, blitMat, blitPass);
                 }
                 else
                 {
-                    Graphics.Blit(blitSrc, blitDst);
+                    command.Blit(blitSrc.Value, blitDst.Value);
                 }
             }
         }
 
-        Graphics.Blit(main, dst);
-        RenderTexture.ReleaseTemporary(main);
+        command.Blit(main, dst);
+        command.ReleaseTemporaryRT(mainID);
+        return command;
     }
 
     private SecondaryCameraController CreateCamera()

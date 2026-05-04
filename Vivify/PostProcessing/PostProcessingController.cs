@@ -154,7 +154,6 @@ internal class PostProcessingController : CullingCameraController
     {
         RenderTextureDescriptor descriptor = src.descriptor;
         descriptor.msaaSamples = 1;
-        CreateDeclaredTextures(descriptor);
         RenderTexture temp = RenderTexture.GetTemporary(descriptor);
         RenderImage(src, temp, PreEffects);
 
@@ -214,6 +213,9 @@ internal class PostProcessingController : CullingCameraController
                 Shader.SetGlobalTexture(data.PropertyId, texture);
             }
         }
+
+        RenderTextureDescriptor descriptor = new(Camera.pixelWidth, Camera.pixelHeight);
+        CreateDeclaredTextures(descriptor);
     }
 
     private void CreateDeclaredTextures(RenderTextureDescriptor descriptor)

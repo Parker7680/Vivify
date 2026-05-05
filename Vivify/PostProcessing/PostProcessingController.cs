@@ -28,6 +28,7 @@ internal class PostProcessingController : CullingCameraController
     private IInstantiator _instantiator = null!;
 
     private ImageEffectController _imageEffectController = null!;
+    private RenderTextureDescriptor? _cachedMainDescriptor;
 
     internal Dictionary<string, CreateCameraData> CameraDatas { get; set; } = new();
 
@@ -155,6 +156,8 @@ internal class PostProcessingController : CullingCameraController
     {
         RenderTextureDescriptor descriptor = src.descriptor;
         descriptor.msaaSamples = 1;
+        _cachedMainDescriptor = descriptor;
+        CreateDeclaredTextures(descriptor);
         RenderTexture temp = RenderTexture.GetTemporary(descriptor);
         Graphics.ExecuteCommandBuffer(RenderImage(descriptor, src, temp, PreEffects));
 
@@ -215,8 +218,10 @@ internal class PostProcessingController : CullingCameraController
             }
         }
 
-        RenderTextureDescriptor descriptor = new(Camera.pixelWidth, Camera.pixelHeight);
-        CreateDeclaredTextures(descriptor);
+        if (_cachedMainDescriptor.HasValue)
+        {
+            CreateDeclaredTextures(_cachedMainDescriptor.Value);
+        }
     }
 
     private void CreateDeclaredTextures(RenderTextureDescriptor descriptor)

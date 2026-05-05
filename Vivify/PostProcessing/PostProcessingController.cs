@@ -20,6 +20,7 @@ internal class PostProcessingController : CullingCameraController
     private readonly Dictionary<string, CullingCameraController> _cullingCameraControllers = new();
     private readonly Dictionary<string, RenderTextureHolder> _declaredTextures = new();
     private readonly Stack<SecondaryCameraController> _disabledCullingCameraControllers = new();
+    private readonly Stack<ActiveCommandBuffer> _activeCommandBuffers = new();
 
     private readonly List<CreateCameraData> _reusableCameraKeys = [];
     private readonly List<CreateScreenTextureData> _reusableDeclaredKeys = [];
@@ -34,9 +35,14 @@ internal class PostProcessingController : CullingCameraController
 
     internal Dictionary<string, CreateScreenTextureData> DeclaredTextureDatas { get; set; } = new();
 
-    internal List<MaterialData> PreEffects { get; set; } = [];
+    internal Dictionary<PostProcessingOrder, List<MaterialData>> Effects { get; set; } = new();
 
-    internal List<MaterialData> PostEffects { get; set; } = [];
+    private struct ActiveCommandBuffer
+    {
+        public CommandBuffer Command { get; set; }
+
+        public CameraEvent CameraEvent { get; set; }
+    }
 
     internal void PrewarmCameras(int count)
     {
@@ -159,7 +165,7 @@ internal class PostProcessingController : CullingCameraController
         _cachedMainDescriptor = descriptor;
         CreateDeclaredTextures(descriptor);
         RenderTexture temp = RenderTexture.GetTemporary(descriptor);
-        Graphics.ExecuteCommandBuffer(RenderImage(descriptor, src, temp, PreEffects));
+        Graphics.ExecuteCommandBuffer(RenderImage(descriptor, src, temp, Effects[PostProcessingOrder.BeforeMainEffect]));
 
         ImageEffectController.RenderImageCallback? callback = _imageEffectController._renderImageCallback;
         if (callback != null && _imageEffectController.isActiveAndEnabled)
@@ -170,7 +176,7 @@ internal class PostProcessingController : CullingCameraController
             temp = temp2;
         }
 
-        Graphics.ExecuteCommandBuffer(RenderImage(descriptor, temp, dst, PostEffects));
+        Graphics.ExecuteCommandBuffer(RenderImage(descriptor, temp, dst, Effects[PostProcessingOrder.AfterMainEffect]));
         RenderTexture.ReleaseTemporary(temp);
     }
 
@@ -221,7 +227,42 @@ internal class PostProcessingController : CullingCameraController
         if (_cachedMainDescriptor.HasValue)
         {
             CreateDeclaredTextures(_cachedMainDescriptor.Value);
+
+            RenderTargetIdentifier src = new(BuiltinRenderTextureType.CurrentActive);
+            RenderTargetIdentifier dst = new(BuiltinRenderTextureType.CameraTarget);
+
+            AddCommandBuffer(PostProcessingOrder.BeforeSkybox, CameraEvent.BeforeSkybox);
+            AddCommandBuffer(PostProcessingOrder.AfterSkybox, CameraEvent.AfterSkybox);
+            AddCommandBuffer(PostProcessingOrder.BeforeOpaque, CameraEvent.BeforeForwardOpaque);
+            AddCommandBuffer(PostProcessingOrder.AfterOpaque, CameraEvent.AfterForwardOpaque);
+            AddCommandBuffer(PostProcessingOrder.BeforeAlpha, CameraEvent.BeforeForwardAlpha);
+            AddCommandBuffer(PostProcessingOrder.AfterAlpha, CameraEvent.AfterForwardAlpha);
+
+            void AddCommandBuffer(PostProcessingOrder order, CameraEvent cameraEvent)
+            {
+                List<MaterialData> materials = Effects[order];
+
+                if (materials.Count == 0)
+                {
+                    return;
+                }
+
+                CommandBuffer command = RenderImage(_cachedMainDescriptor.Value, src, dst, materials);
+                Camera.AddCommandBuffer(cameraEvent, command);
+                _activeCommandBuffers.Push(new ActiveCommandBuffer
+                {
+                    CameraEvent = cameraEvent,
+                    Command = command
+                });
+            }
         }
+    }
+
+    protected override void OnPostRender()
+    {
+        ClearActiveCommandBuffers();
+
+        base.OnPostRender();
     }
 
     private void CreateDeclaredTextures(RenderTextureDescriptor descriptor)
@@ -429,6 +470,16 @@ internal class PostProcessingController : CullingCameraController
         return result;
     }
 
+    private void ClearActiveCommandBuffers()
+    {
+        while (_activeCommandBuffers.Count > 0)
+        {
+            ActiveCommandBuffer cmd = _activeCommandBuffers.Pop();
+            Camera.RemoveCommandBuffer(cmd.CameraEvent, cmd.Command);
+            cmd.Command.Dispose();
+        }
+    }
+
     [UsedImplicitly]
     [Inject]
     private void Construct(SiraLog log, IInstantiator instantiator)
@@ -440,6 +491,14 @@ internal class PostProcessingController : CullingCameraController
     private void Awake()
     {
         _imageEffectController = GetComponent<ImageEffectController>();
+
+        foreach (PostProcessingOrder key in Enum.GetValues(typeof(PostProcessingOrder)))
+        {
+            if (!Effects.ContainsKey(key))
+            {
+                Effects[key] = [];
+            }
+        }
     }
 
     private void OnDestroy()
@@ -465,6 +524,7 @@ internal class PostProcessingController : CullingCameraController
 
         _cullingCameraControllers.Clear();
         _disabledCullingCameraControllers.Clear();
+        ClearActiveCommandBuffers();
     }
 }
 

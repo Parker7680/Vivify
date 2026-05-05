@@ -49,7 +49,7 @@ internal class CullingCameraController : MonoBehaviour
         }
     }
 
-    private void OnPostRender()
+    protected virtual void OnPostRender()
     {
         if (_cachedMask != null)
         {

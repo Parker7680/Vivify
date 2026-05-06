@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Heck.ReLoad;
 using JetBrains.Annotations;
 using SiraUtil.Sabers;
@@ -9,13 +10,15 @@ using Zenject;
 
 namespace Vivify.ObjectPrefab.Managers;
 
-internal class SaberPrefabManager : IDisposable
+internal class SaberPrefabManager : ILateTickable, IDisposable
 {
     private readonly BeatmapObjectPrefabManager _beatmapObjectPrefabManager;
     private readonly ReLoader? _reLoader;
     private readonly Saber _saberA;
     private readonly Saber _saberB;
     private readonly SaberModelManager _saberModelManager;
+
+    private readonly List<Func<bool>> _contracts = [];
 
     private SaberModelController? _saberModelControllerA;
     private SaberModelController? _saberModelControllerB;
@@ -51,13 +54,11 @@ internal class SaberPrefabManager : IDisposable
 
     internal TrailList SaberBTrailMaterials { get; } = new();
 
-    private SaberModelController SaberModelControllerA =>
-        (_saberModelControllerA ??= _saberModelManager.GetSaberModelController(_saberA)) ??
-        throw new InvalidOperationException($"Could not find SaberModelController for [{_saberA.saberType}]");
+    private SaberModelController? SaberModelControllerA =>
+        _saberModelControllerA ??= _saberModelManager.GetSaberModelController(_saberA);
 
-    private SaberModelController SaberModelControllerB =>
-        (_saberModelControllerB ??= _saberModelManager.GetSaberModelController(_saberB)) ??
-        throw new InvalidOperationException($"Could not find SaberModelController for [{_saberB.saberType}]");
+    private SaberModelController? SaberModelControllerB =>
+        _saberModelControllerB ??= _saberModelManager.GetSaberModelController(_saberB);
 
     public void Dispose()
     {
@@ -72,39 +73,97 @@ internal class SaberPrefabManager : IDisposable
         SaberBTrailMaterials.Changed -= OnSaberBTrailChanged;
     }
 
+    public void LateTick()
+    {
+        for (int i = _contracts.Count - 1; i >= 0; i--)
+        {
+            if (!_contracts[i]())
+            {
+                // if one contract fails, then we can assume all the contracts will fail
+                return;
+            }
+
+            _contracts.RemoveAt(i);
+        }
+    }
+
     private void OnRewind()
     {
         SaberAPrefabs.Clear();
         SaberBPrefabs.Clear();
     }
 
+    private void CreateContract(Func<bool> contract)
+    {
+        if (!contract())
+        {
+            _contracts.Add(contract);
+        }
+    }
+
     private void OnSaberAChanged(float time)
     {
-        _beatmapObjectPrefabManager.Despawn(SaberModelControllerA);
-        _beatmapObjectPrefabManager.Spawn<PrefabPool, GameObject>(SaberAPrefabs, SaberModelControllerA, time);
+        CreateContract(() =>
+        {
+            if (SaberModelControllerA == null)
+            {
+                return false;
+            }
+
+            _beatmapObjectPrefabManager.Despawn(SaberModelControllerA);
+            _beatmapObjectPrefabManager.Spawn<PrefabPool, GameObject>(SaberAPrefabs, SaberModelControllerA, time);
+            return true;
+        });
     }
 
     private void OnSaberATrailChanged(float time)
     {
-        _beatmapObjectPrefabManager.Despawn(SaberModelControllerA._saberTrail);
-        _beatmapObjectPrefabManager.Spawn<TrailPool, FollowedSaberTrail>(
-            SaberATrailMaterials,
-            SaberModelControllerA._saberTrail,
-            time);
+        CreateContract(() =>
+        {
+            if (SaberModelControllerA == null)
+            {
+                return false;
+            }
+
+            _beatmapObjectPrefabManager.Despawn(SaberModelControllerA._saberTrail);
+            _beatmapObjectPrefabManager.Spawn<TrailPool, FollowedSaberTrail>(
+                SaberATrailMaterials,
+                SaberModelControllerA._saberTrail,
+                time);
+            return true;
+        });
     }
 
     private void OnSaberBChanged(float time)
     {
-        _beatmapObjectPrefabManager.Despawn(SaberModelControllerB);
-        _beatmapObjectPrefabManager.Spawn<PrefabPool, GameObject>(SaberBPrefabs, SaberModelControllerB, time);
+        CreateContract(() =>
+        {
+            if (SaberModelControllerB == null)
+            {
+                return false;
+            }
+
+            _beatmapObjectPrefabManager.Despawn(SaberModelControllerB);
+            _beatmapObjectPrefabManager.Spawn<PrefabPool, GameObject>(SaberBPrefabs, SaberModelControllerB, time);
+            return true;
+        });
     }
 
     private void OnSaberBTrailChanged(float time)
     {
-        _beatmapObjectPrefabManager.Despawn(SaberModelControllerB._saberTrail);
-        _beatmapObjectPrefabManager.Spawn<TrailPool, FollowedSaberTrail>(
-            SaberBTrailMaterials,
-            SaberModelControllerB._saberTrail,
-            time);
+        CreateContract(() =>
+        {
+            if (SaberModelControllerB == null)
+            {
+                return false;
+            }
+
+            _beatmapObjectPrefabManager.Despawn(SaberModelControllerB._saberTrail);
+            _beatmapObjectPrefabManager.Spawn<TrailPool, FollowedSaberTrail>(
+                SaberBTrailMaterials,
+                SaberModelControllerB._saberTrail,
+                time);
+            return true;
+        });
     }
 }

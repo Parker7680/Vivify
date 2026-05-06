@@ -34,15 +34,21 @@ internal class CameraEffectApplier : IAffinity, IDisposable
             n => n.eventType == VivifyController.DECLARE_CULLING_TEXTURE)
             ? 1
             : 0;
+
+        foreach (PostProcessingOrder key in Enum.GetValues(typeof(PostProcessingOrder)))
+        {
+            if (!Effects.ContainsKey(key))
+            {
+                Effects[key] = [];
+            }
+        }
     }
 
     internal Dictionary<string, CreateCameraData> CameraDatas { get; } = new();
 
     internal Dictionary<string, CreateScreenTextureData> DeclaredTextureDatas { get; } = new();
 
-    internal List<MaterialData> PreEffects { get; } = [];
-
-    internal List<MaterialData> PostEffects { get; } = [];
+    internal Dictionary<PostProcessingOrder, List<MaterialData>> Effects { get; } = new();
 
     public void Dispose()
     {
@@ -64,8 +70,10 @@ internal class CameraEffectApplier : IAffinity, IDisposable
         CameraDatas.Clear();
         DeclaredTextureDatas.Clear();
 
-        PreEffects.Clear();
-        PostEffects.Clear();
+        foreach (var materials in Effects.Values)
+        {
+            materials.Clear();
+        }
     }
 
     [AffinityPrefix]
@@ -86,8 +94,7 @@ internal class CameraEffectApplier : IAffinity, IDisposable
         _postProcessingControllers[__instance] = postProcessingController;
         postProcessingController.CameraDatas = CameraDatas;
         postProcessingController.DeclaredTextureDatas = DeclaredTextureDatas;
-        postProcessingController.PreEffects = PreEffects;
-        postProcessingController.PostEffects = PostEffects;
+        postProcessingController.Effects = Effects;
         postProcessingController.PrewarmCameras(_prewarmCount);
     }
 }

@@ -16,6 +16,12 @@ namespace Vivify;
 
 internal enum PostProcessingOrder
 {
+    BeforeSkybox,
+    AfterSkybox,
+    BeforeOpaque,
+    AfterOpaque,
+    BeforeAlpha,
+    AfterAlpha,
     BeforeMainEffect,
     AfterMainEffect
 }

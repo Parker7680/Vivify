@@ -77,12 +77,7 @@ internal class ApplyPostProcessing : ICustomEvent
             }
         }
 
-        List<MaterialData> effects = data.Order switch
-        {
-            PostProcessingOrder.BeforeMainEffect => _cameraEffectApplier.PreEffects,
-            PostProcessingOrder.AfterMainEffect => _cameraEffectApplier.PostEffects,
-            _ => throw new ArgumentOutOfRangeException()
-        };
+        List<MaterialData> effects = _cameraEffectApplier.Effects[data.Order];
 
         if (duration == 0)
         {

@@ -25,6 +25,8 @@ internal class PostProcessingController : CullingCameraController
     private readonly List<CreateCameraData> _reusableCameraKeys = [];
     private readonly List<CreateScreenTextureData> _reusableDeclaredKeys = [];
 
+    private readonly int _mainTex = Shader.PropertyToID("_MainTex");
+
     private SiraLog _log = null!;
     private IInstantiator _instantiator = null!;
 
@@ -36,13 +38,6 @@ internal class PostProcessingController : CullingCameraController
     internal Dictionary<string, CreateScreenTextureData> DeclaredTextureDatas { get; set; } = new();
 
     internal Dictionary<PostProcessingOrder, List<MaterialData>> Effects { get; set; } = new();
-
-    private struct ActiveCommandBuffer
-    {
-        public CommandBuffer Command { get; set; }
-
-        public CameraEvent CameraEvent { get; set; }
-    }
 
     internal void PrewarmCameras(int count)
     {
@@ -140,6 +135,13 @@ internal class PostProcessingController : CullingCameraController
         base.OnPreCull();
     }
 
+    protected override void OnPostRender()
+    {
+        ClearActiveCommandBuffers();
+
+        base.OnPostRender();
+    }
+
     // Cool method for copying serialized fields
     // if i was smart, i would've used this for chroma components
     private static void CopyComponent<T, TDerived>(T original, GameObject destination)
@@ -224,45 +226,41 @@ internal class PostProcessingController : CullingCameraController
             }
         }
 
-        if (_cachedMainDescriptor.HasValue)
+        if (!_cachedMainDescriptor.HasValue)
         {
-            CreateDeclaredTextures(_cachedMainDescriptor.Value);
-
-            RenderTargetIdentifier src = new(BuiltinRenderTextureType.CurrentActive);
-            RenderTargetIdentifier dst = new(BuiltinRenderTextureType.CameraTarget);
-
-            AddCommandBuffer(PostProcessingOrder.BeforeSkybox, CameraEvent.BeforeSkybox);
-            AddCommandBuffer(PostProcessingOrder.AfterSkybox, CameraEvent.AfterSkybox);
-            AddCommandBuffer(PostProcessingOrder.BeforeOpaque, CameraEvent.BeforeForwardOpaque);
-            AddCommandBuffer(PostProcessingOrder.AfterOpaque, CameraEvent.AfterForwardOpaque);
-            AddCommandBuffer(PostProcessingOrder.BeforeAlpha, CameraEvent.BeforeForwardAlpha);
-            AddCommandBuffer(PostProcessingOrder.AfterAlpha, CameraEvent.AfterForwardAlpha);
-
-            void AddCommandBuffer(PostProcessingOrder order, CameraEvent cameraEvent)
-            {
-                List<MaterialData> materials = Effects[order];
-
-                if (materials.Count == 0)
-                {
-                    return;
-                }
-
-                CommandBuffer command = RenderImage(_cachedMainDescriptor.Value, src, dst, materials);
-                Camera.AddCommandBuffer(cameraEvent, command);
-                _activeCommandBuffers.Push(new ActiveCommandBuffer
-                {
-                    CameraEvent = cameraEvent,
-                    Command = command
-                });
-            }
+            return;
         }
-    }
 
-    protected override void OnPostRender()
-    {
-        ClearActiveCommandBuffers();
+        CreateDeclaredTextures(_cachedMainDescriptor.Value);
 
-        base.OnPostRender();
+        RenderTargetIdentifier src = new(BuiltinRenderTextureType.CurrentActive);
+        RenderTargetIdentifier dst = new(BuiltinRenderTextureType.CameraTarget);
+
+        AddCommandBuffer(PostProcessingOrder.BeforeSkybox, CameraEvent.BeforeSkybox);
+        AddCommandBuffer(PostProcessingOrder.AfterSkybox, CameraEvent.AfterSkybox);
+        AddCommandBuffer(PostProcessingOrder.BeforeOpaque, CameraEvent.BeforeForwardOpaque);
+        AddCommandBuffer(PostProcessingOrder.AfterOpaque, CameraEvent.AfterForwardOpaque);
+        AddCommandBuffer(PostProcessingOrder.BeforeAlpha, CameraEvent.BeforeForwardAlpha);
+        AddCommandBuffer(PostProcessingOrder.AfterAlpha, CameraEvent.AfterForwardAlpha);
+        return;
+
+        void AddCommandBuffer(PostProcessingOrder order, CameraEvent cameraEvent)
+        {
+            List<MaterialData> materials = Effects[order];
+
+            if (materials.Count == 0)
+            {
+                return;
+            }
+
+            CommandBuffer command = RenderImage(_cachedMainDescriptor.Value, src, dst, materials);
+            Camera.AddCommandBuffer(cameraEvent, command);
+            _activeCommandBuffers.Push(new ActiveCommandBuffer
+            {
+                CameraEvent = cameraEvent,
+                Command = command
+            });
+        }
     }
 
     private void CreateDeclaredTextures(RenderTextureDescriptor descriptor)
@@ -315,7 +313,7 @@ internal class PostProcessingController : CullingCameraController
         int tempIDNext = 69;
 
         // blit all passes
-        int mainID = Shader.PropertyToID("_MainTex"); // TODO: I am not actually sure what this should be
+        int mainID = _mainTex; // TODO: I am not actually sure what this should be
         RenderTargetIdentifier main = new(mainID);
         command.GetTemporaryRT(mainID, mainDescriptor);
 
@@ -525,6 +523,13 @@ internal class PostProcessingController : CullingCameraController
         _cullingCameraControllers.Clear();
         _disabledCullingCameraControllers.Clear();
         ClearActiveCommandBuffers();
+    }
+
+    private struct ActiveCommandBuffer
+    {
+        public CommandBuffer Command { get; set; }
+
+        public CameraEvent CameraEvent { get; set; }
     }
 }
 

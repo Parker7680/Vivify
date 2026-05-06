@@ -70,7 +70,7 @@ internal class CameraEffectApplier : IAffinity, IDisposable
         CameraDatas.Clear();
         DeclaredTextureDatas.Clear();
 
-        foreach (var materials in Effects.Values)
+        foreach (List<MaterialData>? materials in Effects.Values)
         {
             materials.Clear();
         }
